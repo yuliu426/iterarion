@@ -1,0 +1,270 @@
+---
+title: "Untitled"
+author: "Yu"
+date: "November 9, 2020"
+output: github_document
+---
+
+```{r}
+library(tidyverse)
+library(purrr)
+library(ggplot2)
+library(knitr)
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6, 
+  out.width = '90%'
+)
+
+theme_set(theme_minimal() + theme(legend.position = 'bottom'))  #apply this theme setting everywhere in this document
+
+options(
+  ggplot2.continuous.color = 'viridis',
+  ggplot2.continuous.fill = 'viridis'
+)
+
+scale_color_discrete = scale_color_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+## Lists
+
+You can put anything in a list
+
+```{r}
+l = list(
+  vec_numeric = 5:8,
+  vec_logical = c(TRUE, TRUE, FALSE, TRUE, FALSE, FALSE),
+  mat = matrix(1:8, nrow = 2, ncol = 4),
+  summary = summary(rnorm(100))
+)
+```
+
+
+```{r}
+l
+l$vec_numeric
+l[[1]]
+mean(l[["vec_numeric"]])
+```
+
+
+##`for` loop
+
+```{r}
+list_norm = 
+  list(
+    a = rnorm(20, mean = 3, sd = 1),
+    b = rnorm(30, mean = 0, sd = 5),
+    c = rnorm(40, mean = 10, sd = .2),
+    d = rnorm(20, mean = -3, sd = 1)
+  )
+```
+
+
+```{r}
+list_norm[[1]]
+list_norm
+```
+
+
+Pause
+```{r}
+mean_and_sd = function(x){
+  
+  if(!is.numeric(x)){
+    stop("Inout must be numeric")
+  }
+  
+  if(length(x)<3){
+    stop("Input must has three more numbers")
+  }
+  
+  mean_x = mean(x)
+  sd_x = sd(x)
+  
+  
+  tibble(
+    mean = mean_x,
+    sd = sd_x
+  )
+  
+}
+```
+
+I can apply that function to each list element.
+
+```{r}
+mean_and_sd(list_norm[[1]])
+mean_and_sd(list_norm[[2]])
+mean_and_sd(list_norm[[3]])
+mean_and_sd(list_norm[[4]])
+```
+
+
+Let's use for loop:
+
+```{r}
+output=vector('list', length = 4)
+ 
+
+for(i in 1:4){
+
+output[[i]] = mean_and_sd(list_norm[[i]])
+ 
+}                        
+                        
+```
+
+##Let's try map!
+
+```{r}
+output = map(list_norm, mean_and_sd)
+```
+
+
+what if you want t different funtion..?
+
+```{r}
+output = map(list_norm, IQR)
+```
+
+
+```{r}
+output = map_dbl(list_norm, median, .id = 'input')
+
+
+```
+
+```{r}
+output = map_df(list_norm, mean_and_sd, .id = 'input')
+```
+
+
+## List columns!
+```{r}
+listcol_df = 
+  tibble(
+    name = c('a', 'b', 'c', 'd'),
+    samp = list_norm
+  )
+```
+
+```{r}
+listcol_df %>% pull(name)
+listcol_df %>% pull(samp)
+
+list_df %>% 
+  filter(name == 'a')
+```
+
+Let's try some operations.
+
+```{r}
+mean_and_sd(listcol_df$samp[[1]])
+mean_and_sd(listcol_df$samp[[2]])
+mean_and_sd(listcol_df$samp[[3]])
+mean_and_sd(listcol_df$samp[[4]])
+
+```
+
+Can I just ..map?
+
+```{r}
+map(listcol_df$samp, mean_and_sd)
+```
+
+So ... can I add a list column??
+
+```{r}
+listcol_df %>% 
+  mutate(
+    summary = map(samp, mean_and_sd),
+    median = map_dbl(samp, median)
+  )
+```
+
+
+## Weather data
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728", "USC00519397", "USS0023B17S"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(
+      id, 
+      USW00094728 = "CentralPark_NY", 
+      USC00519397 = "Waikiki_HA",
+      USS0023B17S = "Waterhole_WA"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+Get our list columns ..
+
+```{r}
+weather_nest = 
+  weather_df %>% 
+  nest(data = date:tmin)
+```
+
+```{r}
+weather_nest %>% pull(name)
+weather_nest %>% pull(data)
+
+weather_nest$data[[3]]
+```
+
+
+Suppose i want to regress 'tmax' on 'tmin' for each station.
+
+This works ...
+```{r}
+lm(tmax ~ tmin, weather_nest$data[[1]])
+```
+
+
+Let's write a function.
+
+```{r}
+
+weather_lm = function(df){ 
+  lm(tmax ~ tmin, data = df)
+}
+
+output = vector('list', 3)
+
+for(i in 1:3){
+  output[[i]] = weather_lm(weather_nest$data[[i]])
+}
+
+
+```
+
+
+What about a map..!?
+
+```{r}
+map(weather_nest$data, weather_lm)
+```
+
+
+What about a map in a list column!!!?
+
+```{r}
+weather_nest = 
+  weather_nest %>% 
+    mutate(models = map(data, weather_lm))
+
+weather_nest$models
+```
+
