@@ -1,0 +1,93 @@
+---
+title: "examples"
+author: "Yu"
+date: "November 11, 2020"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6, 
+  out.width = '90%'
+)
+
+theme_set(theme_minimal() + theme(legend.position = 'bottom'))  #apply this theme setting everywhere in this document
+
+options(
+  ggplot2.continuous.color = 'viridis',
+  ggplot2.continuous.fill = 'viridis'
+)
+
+scale_color_discrete = scale_color_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+## Problem 1
+
+Read in the data.
+
+```{r}
+homicide_df = 
+  read_csv('data/homicide-data.csv') %>% 
+  mutate(
+    city_state = str_c(city, state, sep = '_'),
+    resolved = case_when(
+      disposition == 'Closed without arrest' ~ 'unsolved',
+      disposition == 'Open/No arrest' ~ 'unsolved',
+      disposition == 'Closed by arrest' ~ 'solved'
+    )
+  ) %>% 
+  select(city_state, resolved) %>% 
+  filter(city_state != 'Tulsa_AL')
+```
+
+Let's look at this a bit
+
+```{r}
+aggregate_df = 
+  homicide_df %>% 
+    group_by(city_state) %>% 
+    summarize(
+      hom_total = n(),
+      hom_unsolved = sum(resolved == 'unsolved')
+    )
+```
+
+Can I do prop test for a single city?
+
+```{r}
+prop.test( 
+  aggregate_df %>% filter(city_state == 'Baltimore_MD') %>% pull(hom_unsolved),
+  aggregate_df %>% filter(city_state == 'Baltimore_MD') %>% pull(hom_total)) %>% 
+  broom::tidy()
+```
+
+
+Try to iterate...
+
+```{r}
+
+result_df = 
+  aggregate_df %>% 
+  mutate(
+    prop_test = map2(.x = hom_unsolved, .y = hom_total, ~prop.test(x = .x, n = .y)),
+    tidy_test = map(.x = prop_test, ~broom::tidy(.x))
+  ) %>% 
+  select(-prop_test) %>% 
+  unnest(tidy_test) %>% 
+  select(city_state, estimate, conf.low, conf.high)
+```
+
+
+```{r}
+result_df %>% 
+  mutate(city_state = fct_reorder(city_state, estimate)) %>% 
+  ggplot(aes(x = city_state, y = estimate))+
+  geom_point()+
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+
